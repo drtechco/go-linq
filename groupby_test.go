@@ -10,7 +10,7 @@ func TestGroupBy(t *testing.T) {
 	wantEven := []interface{}{2, 4, 6, 8}
 	wantOdd := []interface{}{1, 3, 5, 7, 9}
 
-	q := From(input).GroupBy(
+	q := FromSlice[int](input).GroupBy(
 		func(i interface{}) interface{} { return i.(int) % 2 },
 		func(i interface{}) interface{} { return i.(int) },
 	)
@@ -18,7 +18,7 @@ func TestGroupBy(t *testing.T) {
 	next := q.Iterate()
 	eq := true
 	for item, ok := next(); ok; item, ok = next() {
-		group := item.(Group)
+		group := item
 		switch group.Key.(int) {
 		case 0:
 			if !reflect.DeepEqual(group.Group, wantEven) {

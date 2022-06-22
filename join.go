@@ -10,13 +10,13 @@ package linq
 //
 // Join preserves the order of the elements of outer collection, and for each of
 // these elements, the order of the matching elements of inner.
-func (q Query) Join(inner Query,
+func (q Query[T]) Join(inner Query[any],
 	outerKeySelector func(interface{}) interface{},
 	innerKeySelector func(interface{}) interface{},
-	resultSelector func(outer interface{}, inner interface{}) interface{}) Query {
+	resultSelector func(outer interface{}, inner interface{}) interface{}) Query[any] {
 
-	return Query{
-		Iterate: func() Iterator {
+	return Query[any]{
+		Iterate: func() Iterator[any] {
 			outernext := q.Iterate()
 			innernext := inner.Iterate()
 
@@ -60,46 +60,40 @@ func (q Query) Join(inner Query,
 //   - resultSelectorFn is of type "func(TOuter,TInner) TResult"
 //
 // NOTE: Join has better performance than JoinT.
-func (q Query) JoinT(inner Query,
-	outerKeySelectorFn interface{},
-	innerKeySelectorFn interface{},
-	resultSelectorFn interface{}) Query {
-	outerKeySelectorGenericFunc, err := newGenericFunc(
-		"JoinT", "outerKeySelectorFn", outerKeySelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
+func Join[T, M, O any, K comparable](q Query[T], inner Query[M],
+	outerKeySelector func(T) K,
+	innerKeySelector func(M) K,
+	resultSelector func(outer T, inner M) O) Query[O] {
+	return Query[O]{
+		Iterate: func() Iterator[O] {
+			outernext := q.Iterate()
+			innernext := inner.Iterate()
 
-	outerKeySelectorFunc := func(item interface{}) interface{} {
-		return outerKeySelectorGenericFunc.Call(item)
+			innerLookup := make(map[K][]M)
+			for innerItem, ok := innernext(); ok; innerItem, ok = innernext() {
+				innerKey := innerKeySelector(innerItem)
+				innerLookup[innerKey] = append(innerLookup[innerKey], innerItem)
+			}
+			var outerItem T
+			var innerGroup []M
+			innerLen, innerIndex := 0, 0
+			return func() (item O, ok bool) {
+				if innerIndex >= innerLen {
+					has := false
+					for !has {
+						outerItem, ok = outernext()
+						if !ok {
+							return
+						}
+						innerGroup, has = innerLookup[outerKeySelector(outerItem)]
+						innerLen = len(innerGroup)
+						innerIndex = 0
+					}
+				}
+				item = resultSelector(outerItem, innerGroup[innerIndex])
+				innerIndex++
+				return item, true
+			}
+		},
 	}
-
-	innerKeySelectorFuncGenericFunc, err := newGenericFunc(
-		"JoinT", "innerKeySelectorFn",
-		innerKeySelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	innerKeySelectorFunc := func(item interface{}) interface{} {
-		return innerKeySelectorFuncGenericFunc.Call(item)
-	}
-
-	resultSelectorGenericFunc, err := newGenericFunc(
-		"JoinT", "resultSelectorFn", resultSelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType), new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	resultSelectorFunc := func(outer interface{}, inner interface{}) interface{} {
-		return resultSelectorGenericFunc.Call(outer, inner)
-	}
-
-	return q.Join(inner, outerKeySelectorFunc, innerKeySelectorFunc, resultSelectorFunc)
 }

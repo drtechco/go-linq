@@ -2,13 +2,13 @@ package linq
 
 // DefaultIfEmpty returns the elements of the specified sequence
 // if the sequence is empty.
-func (q Query) DefaultIfEmpty(defaultValue interface{}) Query {
-	return Query{
-		Iterate: func() Iterator {
+func (q Query[T]) DefaultIfEmpty(defaultValue T) Query[T] {
+	return Query[T]{
+		Iterate: func() Iterator[T] {
 			next := q.Iterate()
 			state := 1
 
-			return func() (item interface{}, ok bool) {
+			return func() (item T, ok bool) {
 				switch state {
 				case 1:
 					item, ok = next()

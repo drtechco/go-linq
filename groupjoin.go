@@ -1,7 +1,5 @@
 package linq
 
-import "reflect"
-
 // GroupJoin correlates the elements of two collections based on key equality,
 // and groups the results.
 //
@@ -18,13 +16,13 @@ import "reflect"
 //
 // GroupJoin preserves the order of the elements of outer, and for each element
 // of outer, the order of the matching elements from inner.
-func (q Query) GroupJoin(inner Query,
+func (q Query[T]) GroupJoin(inner Query[any],
 	outerKeySelector func(interface{}) interface{},
 	innerKeySelector func(interface{}) interface{},
-	resultSelector func(outer interface{}, inners []interface{}) interface{}) Query {
+	resultSelector func(outer interface{}, inners []interface{}) interface{}) Query[any] {
 
-	return Query{
-		Iterate: func() Iterator {
+	return Query[any]{
+		Iterate: func() Iterator[any] {
 			outernext := q.Iterate()
 			innernext := inner.Iterate()
 
@@ -59,49 +57,33 @@ func (q Query) GroupJoin(inner Query,
 //   - resultSelectorFn: is of type "func(TOuter, inners []TInner) TResult"
 //
 // NOTE: GroupJoin has better performance than GroupJoinT.
-func (q Query) GroupJoinT(inner Query,
-	outerKeySelectorFn interface{},
-	innerKeySelectorFn interface{},
-	resultSelectorFn interface{}) Query {
-	outerKeySelectorGenericFunc, err := newGenericFunc(
-		"GroupJoinT", "outerKeySelectorFn", outerKeySelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
+func GroupJoin[T, M any, K comparable, O any](q Query[T], inner Query[M],
+	outerKeySelector func(T) K,
+	innerKeySelector func(M) K,
+	resultSelector func(outer T, inners []M) O) Query[O] {
 
-	outerKeySelectorFunc := func(item interface{}) interface{} {
-		return outerKeySelectorGenericFunc.Call(item)
-	}
+	return Query[O]{
+		Iterate: func() Iterator[O] {
+			outernext := q.Iterate()
+			innernext := inner.Iterate()
 
-	innerKeySelectorFuncGenericFunc, err := newGenericFunc(
-		"GroupJoinT", "innerKeySelectorFn", innerKeySelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
+			innerLookup := make(map[K][]M)
+			for innerItem, ok := innernext(); ok; innerItem, ok = innernext() {
+				innerKey := innerKeySelector(innerItem)
+				innerLookup[innerKey] = append(innerLookup[innerKey], innerItem)
+			}
+			return func() (item O, ok bool) {
+				var oItem T
+				if oItem, ok = outernext(); !ok {
+					return
+				}
+				if group, has := innerLookup[outerKeySelector(oItem)]; !has {
+					item = resultSelector(oItem, []M{})
+				} else {
+					item = resultSelector(oItem, group)
+				}
+				return
+			}
+		},
 	}
-
-	innerKeySelectorFunc := func(item interface{}) interface{} {
-		return innerKeySelectorFuncGenericFunc.Call(item)
-	}
-
-	resultSelectorGenericFunc, err := newGenericFunc(
-		"GroupJoinT", "resultSelectorFn", resultSelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType), new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	resultSelectorFunc := func(outer interface{}, inners []interface{}) interface{} {
-		innerSliceType := reflect.MakeSlice(resultSelectorGenericFunc.Cache.TypesIn[1], 0, 0)
-		innersSlicePointer := reflect.New(innerSliceType.Type())
-		From(inners).ToSlice(innersSlicePointer.Interface())
-		innersTyped := reflect.Indirect(innersSlicePointer).Interface()
-		return resultSelectorGenericFunc.Call(outer, innersTyped)
-	}
-
-	return q.GroupJoin(inner, outerKeySelectorFunc, innerKeySelectorFunc, resultSelectorFunc)
 }

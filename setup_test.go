@@ -45,7 +45,7 @@ func (f foo) CompareTo(c Comparable) int {
 	return 0
 }
 
-func toSlice(q Query) (result []interface{}) {
+func toSlice[T any](q Query[T]) (result []interface{}) {
 	next := q.Iterate()
 
 	for item, ok := next(); ok; item, ok = next() {

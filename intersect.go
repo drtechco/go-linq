@@ -4,9 +4,9 @@ package linq
 // provided input collection. The intersection of two sets A and B is defined as
 // the set that contains all the elements of A that also appear in B, but no
 // other elements.
-func (q Query) Intersect(q2 Query) Query {
-	return Query{
-		Iterate: func() Iterator {
+func (q Query[T]) Intersect(q2 Query[any]) Query[any] {
+	return Query[any]{
+		Iterate: func() Iterator[any] {
 			next := q.Iterate()
 			next2 := q2.Iterate()
 
@@ -35,11 +35,11 @@ func (q Query) Intersect(q2 Query) Query {
 // other elements.
 //
 // IntersectBy invokes a transform function on each element of both collections.
-func (q Query) IntersectBy(q2 Query,
-	selector func(interface{}) interface{}) Query {
+func (q Query[T]) IntersectBy(q2 Query[any],
+	selector func(interface{}) interface{}) Query[any] {
 
-	return Query{
-		Iterate: func() Iterator {
+	return Query[any]{
+		Iterate: func() Iterator[any] {
 			next := q.Iterate()
 			next2 := q2.Iterate()
 
@@ -69,19 +69,30 @@ func (q Query) IntersectBy(q2 Query,
 //   - selectorFn is of type "func(TSource) TSource"
 //
 // NOTE: IntersectBy has better performance than IntersectByT.
-func (q Query) IntersectByT(q2 Query,
-	selectorFn interface{}) Query {
-	selectorGenericFunc, err := newGenericFunc(
-		"IntersectByT", "selectorFn", selectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
+func IntersectBy[T, M, O any](q Query[T], q2 Query[M], selector func(any) O) Query[O] {
+	return Query[O]{
+		Iterate: func() Iterator[O] {
+			next := q.Iterate()
+			next2 := q2.Iterate()
 
-	selectorFunc := func(item interface{}) interface{} {
-		return selectorGenericFunc.Call(item)
-	}
+			set := make(map[interface{}]bool)
+			for item, ok := next2(); ok; item, ok = next2() {
+				s := selector(item)
+				set[s] = true
+			}
 
-	return q.IntersectBy(q2, selectorFunc)
+			return func() (item O, ok bool) {
+				var item1 any
+				for item1, ok = next(); ok; item1, ok = next() {
+					s := selector(item1)
+					item = s
+					if _, has := set[s]; has {
+						delete(set, s)
+						return
+					}
+				}
+				return
+			}
+		},
+	}
 }

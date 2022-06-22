@@ -10,7 +10,7 @@ package linq
 // result of f() replaces the previous aggregated value.
 //
 // Aggregate returns the final result of f().
-func (q Query) Aggregate(f func(interface{}, interface{}) interface{}) interface{} {
+func (q Query[T]) Aggregate(f func(interface{}, interface{}) interface{}) interface{} {
 	next := q.Iterate()
 
 	result, any := next()
@@ -30,20 +30,16 @@ func (q Query) Aggregate(f func(interface{}, interface{}) interface{}) interface
 //   - f is of type: func(TSource, TSource) TSource
 //
 // NOTE: Aggregate has better performance than AggregateT.
-func (q Query) AggregateT(f interface{}) interface{} {
-	fGenericFunc, err := newGenericFunc(
-		"AggregateT", "f", f,
-		simpleParamValidator(newElemTypeSlice(new(genericType), new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
+func (q Query[T]) AggregateT(f func(T, T) T) T {
+	next := q.Iterate()
+	result, any := next()
+	if !any {
+		return nil
 	}
-
-	fFunc := func(result interface{}, current interface{}) interface{} {
-		return fGenericFunc.Call(result, current)
+	for current, ok := next(); ok; current, ok = next() {
+		result = f(result, current)
 	}
-
-	return q.Aggregate(fFunc)
+	return result
 }
 
 // AggregateWithSeed applies an accumulator function over a sequence. The
@@ -57,7 +53,7 @@ func (q Query) AggregateT(f interface{}) interface{} {
 // The result of f() replaces the previous aggregated value.
 //
 // Aggregate returns the final result of f().
-func (q Query) AggregateWithSeed(seed interface{},
+func (q Query[T]) AggregateWithSeed(seed interface{},
 	f func(interface{}, interface{}) interface{}) interface{} {
 
 	next := q.Iterate()
@@ -76,21 +72,14 @@ func (q Query) AggregateWithSeed(seed interface{},
 //
 // NOTE: AggregateWithSeed has better performance than
 // AggregateWithSeedT.
-func (q Query) AggregateWithSeedT(seed interface{},
-	f interface{}) interface{} {
-	fGenericFunc, err := newGenericFunc(
-		"AggregateWithSeed", "f", f,
-		simpleParamValidator(newElemTypeSlice(new(genericType), new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
+func (q Query[T]) AggregateWithSeedT(seed T,
+	f func(T, T) T) T {
+	next := q.Iterate()
+	result := seed
+	for current, ok := next(); ok; current, ok = next() {
+		result = f(result, current)
 	}
-
-	fFunc := func(result interface{}, current interface{}) interface{} {
-		return fGenericFunc.Call(result, current)
-	}
-
-	return q.AggregateWithSeed(seed, fFunc)
+	return result
 }
 
 // AggregateWithSeedBy applies an accumulator function over a sequence. The
@@ -106,7 +95,7 @@ func (q Query) AggregateWithSeedT(seed interface{},
 //
 // The final result of func is passed to resultSelector to obtain the final
 // result of Aggregate.
-func (q Query) AggregateWithSeedBy(seed interface{},
+func (q Query[T]) AggregateWithSeedBy(seed interface{},
 	f func(interface{}, interface{}) interface{},
 	resultSelector func(interface{}) interface{}) interface{} {
 
@@ -127,32 +116,13 @@ func (q Query) AggregateWithSeedBy(seed interface{},
 //
 // NOTE: AggregateWithSeedBy has better performance than
 // AggregateWithSeedByT.
-func (q Query) AggregateWithSeedByT(seed interface{},
-	f interface{},
-	resultSelectorFn interface{}) interface{} {
-	fGenericFunc, err := newGenericFunc(
-		"AggregateWithSeedByT", "f", f,
-		simpleParamValidator(newElemTypeSlice(new(genericType), new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
+func (q Query[T]) AggregateWithSeedByT(seed T,
+	f func(T, T) T,
+	resultSelector func(T) T) T {
+	next := q.Iterate()
+	result := seed
+	for current, ok := next(); ok; current, ok = next() {
+		result = f(result, current)
 	}
-
-	fFunc := func(result interface{}, current interface{}) interface{} {
-		return fGenericFunc.Call(result, current)
-	}
-
-	resultSelectorGenericFunc, err := newGenericFunc(
-		"AggregateWithSeedByT", "resultSelectorFn", resultSelectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	resultSelectorFunc := func(result interface{}) interface{} {
-		return resultSelectorGenericFunc.Call(result)
-	}
-
-	return q.AggregateWithSeedBy(seed, fFunc, resultSelectorFunc)
+	return resultSelector(result)
 }

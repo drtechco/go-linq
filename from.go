@@ -1,99 +1,76 @@
 package linq
 
-import "reflect"
-
 // Iterator is an alias for function to iterate over data.
-type Iterator func() (item interface{}, ok bool)
+type Iterator[T any] func() (item T, ok bool)
 
 // Query is the type returned from query functions. It can be iterated manually
 // as shown in the example.
-type Query struct {
-	Iterate func() Iterator
+type Query[T any] struct {
+	Iterate func() Iterator[T]
 }
 
 // KeyValue is a type that is used to iterate over a map (if query is created
 // from a map). This type is also used by ToMap() method to output result of a
 // query into a map.
-type KeyValue struct {
-	Key   interface{}
-	Value interface{}
+type KeyValue[K comparable, V any] struct {
+	Key   K
+	Value V
 }
 
 // Iterable is an interface that has to be implemented by a custom collection in
 // order to work with linq.
-type Iterable interface {
-	Iterate() Iterator
+type Iterable[T any] interface {
+	Iterate() Iterator[T]
 }
 
-// From initializes a linq query with passed slice, array or map as the source.
-// String, channel or struct implementing Iterable interface can be used as an
-// input. In this case From delegates it to FromString, FromChannel and
-// FromIterable internally.
-func From(source interface{}) Query {
-	src := reflect.ValueOf(source)
-
-	switch src.Kind() {
-	case reflect.Slice, reflect.Array:
-		len := src.Len()
-
-		return Query{
-			Iterate: func() Iterator {
-				index := 0
-
-				return func() (item interface{}, ok bool) {
-					ok = index < len
-					if ok {
-						item = src.Index(index).Interface()
-						index++
-					}
-
-					return
+func FromSlice[T any](source []T) Query[T] {
+	arrLen := len(source)
+	return Query[T]{
+		Iterate: func() Iterator[T] {
+			index := 0
+			return func() (item T, ok bool) {
+				ok = index < arrLen
+				if ok {
+					item = source[index]
+					index++
 				}
-			},
-		}
-	case reflect.Map:
-		len := src.Len()
+				return
+			}
+		},
+	}
+}
 
-		return Query{
-			Iterate: func() Iterator {
-				index := 0
-				keys := src.MapKeys()
-
-				return func() (item interface{}, ok bool) {
-					ok = index < len
-					if ok {
-						key := keys[index]
-						item = KeyValue{
-							Key:   key.Interface(),
-							Value: src.MapIndex(key).Interface(),
-						}
-
-						index++
+func FromMap[K comparable, V any](source map[K]V) Query[KeyValue[K, V]] {
+	mapLen := len(source)
+	return Query[KeyValue[K, V]]{
+		Iterate: func() Iterator[KeyValue[K, V]] {
+			index := 0
+			keys := make([]K, 0)
+			for k, _ := range source {
+				keys = append(keys, k)
+			}
+			return func() (item KeyValue[K, V], ok bool) {
+				ok = index < mapLen
+				if ok {
+					key := keys[index]
+					item = KeyValue[K, V]{
+						Key:   key,
+						Value: source[key],
 					}
-
-					return
+					index++
 				}
-			},
-		}
-	case reflect.String:
-		return FromString(source.(string))
-	case reflect.Chan:
-		if _, ok := source.(chan interface{}); ok {
-			return FromChannel(source.(chan interface{}))
-		} else {
-			return FromChannelT(source)
-		}
-	default:
-		return FromIterable(source.(Iterable))
+				return
+			}
+		},
 	}
 }
 
 // FromChannel initializes a linq query with passed channel, linq iterates over
 // channel until it is closed.
-func FromChannel(source <-chan interface{}) Query {
-	return Query{
-		Iterate: func() Iterator {
-			return func() (item interface{}, ok bool) {
+func FromChannel[T any](source <-chan T) Query[T] {
+	return Query[T]{
+		Iterate: func() Iterator[T] {
+			return func() (item T, ok bool) {
 				item, ok = <-source
 				return
 			}
@@ -101,34 +78,15 @@ func FromChannel(source <-chan interface{}) Query {
 	}
 }
 
-// FromChannelT is the typed version of FromChannel.
-//
-//   - source is of type "chan TSource"
-//
-// NOTE: FromChannel has better performance than FromChannelT.
-func FromChannelT(source interface{}) Query {
-	src := reflect.ValueOf(source)
-	return Query{
-		Iterate: func() Iterator {
-			return func() (interface{}, bool) {
-				value, ok := src.Recv()
-				return value.Interface(), ok
-			}
-		},
-	}
-}
-
 // FromString initializes a linq query with passed string, linq iterates over
 // runes of string.
-func FromString(source string) Query {
+func FromString(source string) Query[rune] {
 	runes := []rune(source)
 	len := len(runes)
-
-	return Query{
-		Iterate: func() Iterator {
+	return Query[rune]{
+		Iterate: func() Iterator[rune] {
 			index := 0
-
-			return func() (item interface{}, ok bool) {
+			return func() (item rune, ok bool) {
 				ok = index < len
 				if ok {
 					item = runes[index]
@@ -144,50 +102,8 @@ func FromString(source string) Query {
 // FromIterable initializes a linq query with custom collection passed. This
 // collection has to implement Iterable interface, linq iterates over items,
 // that has to implement Comparable interface or be basic types.
-func FromIterable(source Iterable) Query {
-	return Query{
+func FromIterable[T any](source Iterable[T]) Query[T] {
+	return Query[T]{
 		Iterate: source.Iterate,
-	}
-}
-
-// Range generates a sequence of integral numbers within a specified range.
-func Range(start, count int) Query {
-	return Query{
-		Iterate: func() Iterator {
-			index := 0
-			current := start
-
-			return func() (item interface{}, ok bool) {
-				if index >= count {
-					return nil, false
-				}
-
-				item, ok = current, true
-
-				index++
-				current++
-				return
-			}
-		},
-	}
-}
-
-// Repeat generates a sequence that contains one repeated value.
-func Repeat(value interface{}, count int) Query {
-	return Query{
-		Iterate: func() Iterator {
-			index := 0
-
-			return func() (item interface{}, ok bool) {
-				if index >= count {
-					return nil, false
-				}
-
-				item, ok = value, true
-
-				index++
-				return
-			}
-		},
 	}
 }

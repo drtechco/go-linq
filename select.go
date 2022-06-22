@@ -12,11 +12,10 @@ package linq
 // the SelectMany method instead of Select. Although SelectMany works similarly
 // to Select, it differs in that the transform function returns a collection
 // that is then expanded by SelectMany before it is returned.
-func (q Query) Select(selector func(interface{}) interface{}) Query {
-	return Query{
-		Iterate: func() Iterator {
+func (q Query[T]) Select(selector func(T) any) Query[any] {
+	return Query[any]{
+		Iterate: func() Iterator[any] {
 			next := q.Iterate()
-
 			return func() (item interface{}, ok bool) {
 				var it interface{}
 				it, ok = next()
@@ -32,22 +31,21 @@ func (q Query) Select(selector func(interface{}) interface{}) Query {
 
 // SelectT is the typed version of Select.
 //   - selectorFn is of type "func(TSource)TResult"
+//
 // NOTE: Select has better performance than SelectT.
-func (q Query) SelectT(selectorFn interface{}) Query {
-
-	selectGenericFunc, err := newGenericFunc(
-		"SelectT", "selectorFn", selectorFn,
-		simpleParamValidator(newElemTypeSlice(new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
+func Select[T, M any](q Query[T], selector func(T) M) Query[M] {
+	return Query[M]{
+		Iterate: func() Iterator[M] {
+			next := q.Iterate()
+			return func() (item M, ok bool) {
+				it, ok := next()
+				if ok {
+					item = selector(it)
+				}
+				return
+			}
+		},
 	}
-
-	selectorFunc := func(item interface{}) interface{} {
-		return selectGenericFunc.Call(item)
-	}
-
-	return q.Select(selectorFunc)
 }
 
 // SelectIndexed projects each element of a collection into a new form by
@@ -69,9 +67,9 @@ func (q Query) SelectT(selectorFn interface{}) Query {
 // the SelectMany method instead of Select. Although SelectMany works similarly
 // to Select, it differs in that the transform function returns a collection
 // that is then expanded by SelectMany before it is returned.
-func (q Query) SelectIndexed(selector func(int, interface{}) interface{}) Query {
-	return Query{
-		Iterate: func() Iterator {
+func (q Query[T]) SelectIndexed(selector func(int, interface{}) interface{}) Query[any] {
+	return Query[any]{
+		Iterate: func() Iterator[any] {
 			next := q.Iterate()
 			index := 0
 
@@ -89,21 +87,41 @@ func (q Query) SelectIndexed(selector func(int, interface{}) interface{}) Query 
 	}
 }
 
-// SelectIndexedT is the typed version of SelectIndexed.
-//   - selectorFn is of type "func(int,TSource)TResult"
-// NOTE: SelectIndexed has better performance than SelectIndexedT.
-func (q Query) SelectIndexedT(selectorFn interface{}) Query {
-	selectGenericFunc, err := newGenericFunc(
-		"SelectIndexedT", "selectorFn", selectorFn,
-		simpleParamValidator(newElemTypeSlice(new(int), new(genericType)), newElemTypeSlice(new(genericType))),
-	)
-	if err != nil {
-		panic(err)
+func SelectIndexed[T, M any](q Query[T], selector func(int, T) M) Query[M] {
+	return Query[M]{
+		Iterate: func() Iterator[M] {
+			next := q.Iterate()
+			index := 0
+			return func() (item M, ok bool) {
+				var it interface{}
+				it, ok = next()
+				if ok {
+					item = selector(index, it)
+					index++
+				}
+				return
+			}
+		},
 	}
-
-	selectorFunc := func(index int, item interface{}) interface{} {
-		return selectGenericFunc.Call(index, item)
-	}
-
-	return q.SelectIndexed(selectorFunc)
 }
+
+//
+//// SelectIndexedT is the typed version of SelectIndexed.
+////   - selectorFn is of type "func(int,TSource)TResult"
+////
+//// NOTE: SelectIndexed has better performance than SelectIndexedT.
+//func (q Query) SelectIndexedT(selectorFn interface{}) Query {
+//	selectGenericFunc, err := newGenericFunc(
+//		"SelectIndexedT", "selectorFn", selectorFn,
+//		simpleParamValidator(newElemTypeSlice(new(int), new(genericType)), newElemTypeSlice(new(genericType))),
+//	)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	selectorFunc := func(index int, item interface{}) interface{} {
+//		return selectGenericFunc.Call(index, item)
+//	}
+//
+//	return q.SelectIndexed(selectorFunc)
+//}
